@@ -6,10 +6,9 @@ export default function PlanProposal({ proposal, onApply, onCancel, applyingLabe
     <div className="proposal-stack">
       <section className="card proposal-card">
         <span className="eyebrow">PROPOSED PLAN</span>
-        <h2>{SPLITS[plan.split]?.label || "맞춤형"} · 주 {plan.daysPerWeek}회</h2>
+        <h2>{SPLITS[plan.split]?.label || "맞춤형"} · {SPLITS[plan.split]?.sessions.length || 4}회 순환</h2>
         <p>{plan.goalSummary}</p>
         <div className="proposal-facts">
-          <span>회당 {plan.durationMinutes}분</span>
           <span>{plan.focus}</span>
           {plan.backVariety && <span>등 운동마다 종목 변경</span>}
         </div>
@@ -19,7 +18,7 @@ export default function PlanProposal({ proposal, onApply, onCancel, applyingLabe
       {proposal.exerciseIds?.length > 0 && (
         <section className="card proposal-card">
           <span className="eyebrow">TODAY'S PREVIEW</span>
-          <h2>첫 운동안</h2>
+          <h2>오늘 운동안</h2>
           <div className="preview-list">
             {proposal.exerciseIds.map((id, index) => {
               const item = EXERCISES.find((exercise) => exercise.id === id);

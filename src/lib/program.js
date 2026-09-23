@@ -16,8 +16,10 @@ export const EXERCISES = [
   { id: "cable_row", name: "시티드 케이블 로우", target: "등", kind: "back", equipment: "케이블", sets: 3, reps: "8~12" },
   { id: "db_row", name: "원암 덤벨 로우", target: "등", kind: "back", equipment: "덤벨", sets: 3, reps: "8~12" },
   { id: "barbell_row", name: "바벨 로우", target: "등", kind: "back", equipment: "바벨", sets: 3, reps: "6~10" },
-  { id: "pullup", name: "풀업", target: "등", kind: "back", equipment: "맨몸", sets: 3, reps: "5~10" },
-  { id: "inverted_row", name: "인버티드 로우", target: "등", kind: "back", equipment: "맨몸", sets: 3, reps: "8~12" },
+  { id: "pullup", name: "풀업", target: "등", kind: "back", equipment: "철봉", sets: 3, reps: "5~10" },
+  { id: "inverted_row", name: "인버티드 로우", target: "등", kind: "back", equipment: "철봉", sets: 3, reps: "8~12" },
+  { id: "superman", name: "슈퍼맨", target: "등", kind: "back", equipment: "맨몸", sets: 3, reps: "10~15" },
+  { id: "reverse_snow_angel", name: "리버스 스노우 엔젤", target: "등", kind: "back", equipment: "맨몸", sets: 3, reps: "10~15" },
   { id: "rear_delt", name: "리어 델트 플라이", target: "후면 어깨", kind: "pull", equipment: "덤벨", sets: 3, reps: "12~15" },
   { id: "curl", name: "덤벨 컬", target: "이두", kind: "pull", equipment: "덤벨", sets: 3, reps: "10~15" },
   { id: "squat", name: "스쿼트", target: "하체", kind: "legs", equipment: "바벨", sets: 3, reps: "6~10" },
@@ -28,30 +30,32 @@ export const EXERCISES = [
   { id: "plank", name: "플랭크", target: "코어", kind: "core", equipment: "맨몸", sets: 3, reps: "30~60초" },
 ];
 
-export const EQUIPMENT = ["맨몸", "덤벨", "바벨", "케이블"];
+export const EQUIPMENT = ["맨몸", "덤벨", "바벨", "케이블", "철봉"];
+export const DEFAULT_LOCATIONS = [];
 
 export const INITIAL_INTAKE = {
   goal: "",
-  daysPerWeek: 3,
-  durationMinutes: 60,
   experience: "초급",
-  equipment: ["맨몸", "덤벨", "바벨", "케이블"],
   avoid: "",
   preferences: "등 운동을 할 때마다 다른 종목을 하고 싶어요.",
 };
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || min));
+export function normalizeIntake(raw = {}) {
+  return {
+    goal: String(raw.goal || ""),
+    experience: String(raw.experience || INITIAL_INTAKE.experience),
+    avoid: String(raw.avoid || ""),
+    preferences: String(raw.preferences ?? INITIAL_INTAKE.preferences),
+  };
+}
 
 export function localPlan(intake) {
-  const days = clamp(intake.daysPerWeek, 1, 7);
-  const split = days <= 3 ? "full_body" : days === 4 ? "upper_lower" : "hybrid";
+  const split = "hybrid";
   return {
     split,
-    daysPerWeek: days,
-    durationMinutes: clamp(intake.durationMinutes, 20, 180),
     goalSummary: intake.goal.trim(),
     focus: "전신 균형",
-    rationale: `${days}일 일정에 맞춰 ${SPLITS[split].label} 구성을 제안합니다. 운동 기록과 선호도에 따라 종목을 바꿀 수 있습니다.${intake.avoid ? " 입력한 주의사항은 기본안에서 자동 해석하지 않았으니 운동 전 종목을 확인해주세요." : ""}`,
+    rationale: "요일에 관계없이 4회 운동 순서를 반복하는 기본안입니다. 운동하는 날마다 시간과 장소를 고르고 종목을 바꿀 수 있습니다." + (intake.avoid ? " 입력한 주의사항은 기본안에서 자동 해석하지 않았으니 운동 전 종목을 확인해주세요." : ""),
     backVariety: true,
     excludedExerciseIds: [],
     changeSummary: "초기 운동 원칙",
@@ -63,8 +67,6 @@ export function normalizePlan(raw, intake) {
   const split = Object.hasOwn(SPLITS, raw?.split) ? raw.split : base.split;
   return {
     split,
-    daysPerWeek: clamp(raw?.daysPerWeek ?? base.daysPerWeek, 1, 7),
-    durationMinutes: clamp(raw?.durationMinutes ?? base.durationMinutes, 20, 180),
     goalSummary: String(raw?.goalSummary || base.goalSummary).slice(0, 300),
     focus: String(raw?.focus || base.focus).slice(0, 100),
     rationale: String(raw?.rationale || base.rationale).slice(0, 600),
@@ -84,8 +86,12 @@ export function workoutType(plan, sessionIndex, history = []) {
   return sessions[sessionIndex % sessions.length];
 }
 
-function availableExercises(intake, plan) {
-  const equipment = new Set(["맨몸", ...(intake.equipment || [])]);
+export function availableExercises(context, plan) {
+  const listed = (context?.equipment || []).map((item) => String(item));
+  const equipment = new Set(["맨몸", ...listed]);
+  for (const standard of EQUIPMENT) {
+    if (listed.some((item) => item.includes(standard))) equipment.add(standard);
+  }
   const excluded = new Set(plan.excludedExerciseIds || []);
   return EXERCISES.filter((item) => equipment.has(item.equipment) && !excluded.has(item.id));
 }
@@ -96,10 +102,10 @@ function pick(exercises, kind, count, shift = 0) {
   return Array.from({ length: Math.min(count, choices.length) }, (_, index) => choices[(shift + index) % choices.length]);
 }
 
-export function makeSession(plan, intake, history = [], date = new Date().toISOString().slice(0, 10), forcedType = null) {
+export function makeSession(plan, history = [], date = new Date().toISOString().slice(0, 10), forcedType = null, context = null) {
   const sessionIndex = history.length;
   const type = SPLITS[plan.split]?.sessions.includes(forcedType) ? forcedType : workoutType(plan, sessionIndex, history);
-  const pool = availableExercises(intake, plan);
+  const pool = context?.durationMinutes && context?.locationId ? availableExercises(context, plan) : [];
   const priorBackSessions = history.filter((session) => session.exercises?.some((item) => item.kind === "back")).length;
   const backPool = pool.filter((item) => item.kind === "back");
   const backCount = backPool.length < 3 ? 1 : 2;
@@ -124,12 +130,12 @@ export function makeSession(plan, intake, history = [], date = new Date().toISOS
       ...back,
       ...pick(pool, "core", 1),
     ];
-    if (plan.durationMinutes >= 75) {
+    if (context?.durationMinutes >= 75) {
       const extraLeg = pool.find((item) => item.id === "rdl" && !chosen.some((selected) => selected.id === item.id))
         || pick(pool, "legs", 2, sessionIndex).find((item) => !chosen.some((selected) => selected.id === item.id));
       if (extraLeg) chosen.push(extraLeg);
     }
-    if (plan.durationMinutes >= 90) {
+    if (context?.durationMinutes >= 90) {
       const extraPush = pick(pool, "push", 2, sessionIndex).find((item) => !chosen.some((selected) => selected.id === item.id));
       if (extraPush) chosen.push(extraPush);
     }
@@ -142,6 +148,7 @@ export function makeSession(plan, intake, history = [], date = new Date().toISOS
     label: type,
     status: "draft",
     planVersion: plan.version || 1,
+    context,
     exercises: unique.map((exercise) => ({ ...exercise, completedSets: [] })),
   };
 }
@@ -149,6 +156,7 @@ export function makeSession(plan, intake, history = [], date = new Date().toISOS
 export function replaceExercise(session, index, replacementId) {
   const replacement = EXERCISES.find((exercise) => exercise.id === replacementId);
   if (!replacement || index < 0 || index >= session.exercises.length) return session;
+  if (session.exercises[index].completedSets?.length) return session;
   if (session.exercises.some((exercise, at) => at !== index && exercise.id === replacementId)) return session;
   return {
     ...session,
@@ -156,12 +164,14 @@ export function replaceExercise(session, index, replacementId) {
   };
 }
 
-export function applyExerciseIds(session, ids, intake, plan) {
-  const allowed = new Set(availableExercises(intake, plan).map((item) => item.id));
-  const unique = [...new Set(ids)].filter((id) => allowed.has(id));
+export function applyExerciseIds(session, ids, plan) {
+  if (!session.context?.durationMinutes || !session.context?.locationId) return session;
+  const allowed = new Set(availableExercises(session.context, plan).map((item) => item.id));
+  const recorded = session.exercises.filter((item) => item.completedSets?.length);
+  const unique = [...new Set([...recorded.map((item) => item.id), ...ids])].filter((id) => allowed.has(id));
   if (unique.length < 2) return session;
   return {
     ...session,
-    exercises: unique.map((id) => ({ ...EXERCISES.find((item) => item.id === id), completedSets: [] })),
+    exercises: unique.map((id) => session.exercises.find((item) => item.id === id) || { ...EXERCISES.find((item) => item.id === id), completedSets: [] }),
   };
 }

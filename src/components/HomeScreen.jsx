@@ -13,6 +13,7 @@ export default function HomeScreen({ selectedDate, setSelectedDate, session, tod
   const dayCount = new Date(year, month, 0).getDate();
   const completed = history.find((item) => item.date === selectedDate);
   const planned = drafts[selectedDate] || (selectedDate === todayDate && !completed ? session : null);
+  const dayExerciseCount = completed?.exercises.length ?? planned?.exercises.length;
 
   const changeMonth = (difference) => {
     const target = new Date(year, month - 1 + difference, 1);
@@ -46,16 +47,16 @@ export default function HomeScreen({ selectedDate, setSelectedDate, session, tod
       <section className="card day-summary-card">
         <div className="section-heading compact"><div><span className="eyebrow">SELECTED DAY</span><h2>{month}월 {day}일</h2></div><button className="text-button" onClick={() => setDetailsOpen(true)}>자세히</button></div>
         <dl className="summary-list">
-          <div><dt>운동</dt><dd>{completed ? `${completed.label} ${completed.status === "partial" ? "일부 기록" : "완료"}` : planned ? `${planned.label} 예정` : "기록 없음"}</dd></div>
-          <div><dt>운동 방식</dt><dd>{SPLITS[plan.split]?.label} · 주 {plan.daysPerWeek}회</dd></div>
-          <div><dt>운동 종목</dt><dd>{completed?.exercises.length || planned?.exercises.length || 0}개</dd></div>
+          <div><dt>운동</dt><dd>{completed ? `${completed.label} ${completed.status === "partial" ? "일부 기록" : "완료"}` : planned ? `${planned.label} ${planned.exercises.length ? "예정" : "준비 전"}` : "기록 없음"}</dd></div>
+          <div><dt>운동 방식</dt><dd>{SPLITS[plan.split]?.label} · {SPLITS[plan.split]?.sessions.length}회 순환</dd></div>
+          <div><dt>운동 종목</dt><dd>{dayExerciseCount == null ? "기록 없음" : dayExerciseCount ? `${dayExerciseCount}개` : "준비 전"}</dd></div>
         </dl>
       </section>
 
       {todaySession && <section className="card workout-brief">
         <div className="brief-icon"><Dumbbell size={22} /></div>
-        <div className="brief-copy"><span className="eyebrow">TODAY'S WORKOUT</span><h2>{todaySession.label} <small>약 {plan.durationMinutes}분</small></h2><p>{todaySession.exercises.slice(0, 3).map((item) => item.target).join(" · ")}</p></div>
-        {todaySession.status !== "complete" && <><button className="primary-button compact-button" onClick={onStartWorkout}>{todaySession.status === "partial" ? "계속" : "시작"}</button><button className="text-button routine-link" onClick={onOpenRoutine}>구성 수정</button></>}
+        <div className="brief-copy"><span className="eyebrow">TODAY'S WORKOUT</span><h2>{todaySession.label} {todaySession.context?.durationMinutes && <small>{todaySession.context.durationMinutes}분</small>}</h2><p>{todaySession.exercises.length ? todaySession.exercises.slice(0, 3).map((item) => item.target).join(" · ") : "운동 전에 시간과 장소를 선택하세요"}</p></div>
+        {todaySession.status !== "complete" && <><button className="primary-button compact-button" onClick={onStartWorkout}>{todaySession.status === "partial" ? "계속" : "운동 준비"}</button>{todaySession.exercises.length > 0 && <button className="text-button routine-link" onClick={onOpenRoutine}>구성 수정</button>}</>}
       </section>}
 
       {detailsOpen && <Modal title={`${month}월 ${day}일 운동`} onClose={() => setDetailsOpen(false)}>

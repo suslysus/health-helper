@@ -8,7 +8,7 @@ import RecoveryScreen from "./components/RecoveryScreen";
 import ProfileScreen from "./components/ProfileScreen";
 import OnboardingScreen from "./components/OnboardingScreen";
 import Modal from "./components/Modal";
-import { applyExerciseIds, EXERCISES, makeSession, normalizePlan, replaceExercise } from "./lib/program";
+import { applyExerciseIds, availableExercises, EXERCISES, makeSession, normalizePlan, replaceExercise } from "./lib/program";
 import { loadAppData, saveAppData } from "./lib/storage";
 
 function localDateKey(date = new Date()) {
@@ -35,10 +35,38 @@ export default function App() {
   useEffect(() => { contentRef.current?.scrollTo({ top: 0 }); }, [activeTab, workoutMode, profileOpen, editingIntake]);
 
   const completed = data.history.find((item) => item.date === selectedDate);
-  const session = completed?.status === "complete" ? completed : data.drafts[selectedDate] || completed || (data.plan && data.intake ? makeSession(data.plan, data.intake, data.history, selectedDate) : null);
+  const session = completed?.status === "complete" ? completed : data.drafts[selectedDate] || completed || (data.plan && data.intake ? makeSession(data.plan, data.history, selectedDate) : null);
   const todayDate = localDateKey();
-  const todaySession = data.history.find((item) => item.date === todayDate) || data.drafts[todayDate] || (data.plan && data.intake ? makeSession(data.plan, data.intake, data.history, todayDate) : null);
+  const todayRecorded = data.history.find((item) => item.date === todayDate);
+  const todaySession = todayRecorded?.status === "complete" ? todayRecorded : data.drafts[todayDate] || todayRecorded || (data.plan && data.intake ? makeSession(data.plan, data.history, todayDate) : null);
+  const availableForSession = session?.context ? availableExercises(session.context, data.plan) : EXERCISES;
   const updateSession = (next) => setData((current) => ({ ...current, drafts: { ...current.drafts, [selectedDate]: next } }));
+
+  const saveLocation = ({ id, name, equipment }) => {
+    const saved = { id: id || `place-${crypto.randomUUID()}`, name: name.trim(), equipment: [...new Set(equipment)], ready: true };
+    setData((current) => ({
+      ...current,
+      locations: id ? current.locations.map((item) => item.id === id ? saved : item) : [...current.locations, saved],
+    }));
+  };
+
+  const parseLocation = async (description) => {
+    const response = await fetch("/api/location", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ description }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "장소 설명을 정리하지 못했습니다.");
+    return result;
+  };
+
+  const prepareSession = ({ type, durationMinutes, locationId }) => {
+    const location = data.locations.find((item) => item.id === locationId);
+    if (!location?.ready || !durationMinutes) return;
+    const context = { durationMinutes: Number(durationMinutes), locationId, locationName: location.name, equipment: [...new Set(["맨몸", ...location.equipment])] };
+    const draft = makeSession(data.plan, data.history, selectedDate, type, context);
+    setData((current) => ({
+      ...current,
+      drafts: { ...current.drafts, [selectedDate]: draft },
+    }));
+  };
 
   const generateProposal = async (payload) => {
     const response = await fetch("/api/plan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, history: data.history }) });
@@ -49,7 +77,7 @@ export default function App() {
 
   const saveInitialPlan = (intake, proposal) => {
     const plan = { ...normalizePlan(proposal.plan, intake), version: (data.plan?.version || 0) + 1 };
-    const draft = applyExerciseIds(makeSession(plan, intake, data.history, selectedDate), proposal.exerciseIds || [], intake, plan);
+    const draft = makeSession(plan, data.history, selectedDate);
     setData((current) => ({
       ...current,
       intake,
@@ -67,19 +95,21 @@ export default function App() {
     if (scope === "today") {
       setData((current) => ({
         ...current,
-        drafts: { ...current.drafts, [selectedDate]: applyExerciseIds(session, proposal.exerciseIds || [], current.intake, current.plan) },
+        drafts: { ...current.drafts, [selectedDate]: applyExerciseIds(session, proposal.exerciseIds || [], current.plan) },
         revisions: [...current.revisions, note],
       }));
       return;
     }
     const nextIntake = scope === "goal" ? { ...data.intake, goal: proposal.plan.goalSummary } : data.intake;
     const plan = { ...normalizePlan(proposal.plan, nextIntake), version: (data.plan?.version || 1) + 1 };
-    const draft = applyExerciseIds(makeSession(plan, nextIntake, data.history, selectedDate), proposal.exerciseIds || [], nextIntake, plan);
+    const started = session?.exercises.some((item) => item.completedSets?.length);
+    const keepToday = scope === "ongoing" || started || session?.status === "complete";
+    const draft = keepToday ? session : applyExerciseIds(makeSession(plan, data.history, selectedDate, null, session?.context), proposal.exerciseIds || [], plan);
     setData((current) => ({
       ...current,
       intake: nextIntake,
       plan,
-      drafts: { [selectedDate]: draft },
+      drafts: keepToday ? current.drafts : { ...current.drafts, [selectedDate]: draft },
       revisions: [...current.revisions, note],
     }));
   };
@@ -102,9 +132,9 @@ export default function App() {
   };
 
   const renderScreen = () => {
-    if (profileOpen) return <ProfileScreen intake={data.intake} plan={data.plan} session={session} revisions={data.revisions} configured={configured} initialSection={profileInitialSection} onGenerate={generateProposal} onApplyRevision={applyRevision} onEditIntake={() => setEditingIntake(true)} onBack={() => { setProfileOpen(false); setProfileInitialSection(null); }} />;
-    if (activeTab === "home") return <HomeScreen selectedDate={selectedDate} setSelectedDate={setSelectedDate} session={session} todaySession={todaySession} history={data.history} drafts={data.drafts} todayDate={todayDate} plan={data.plan} onStartWorkout={startWorkout} onOpenRoutine={() => { setSelectedDate(todayDate); setRoutineOpen(true); }} />;
-    if (activeTab === "workout") return <WorkoutScreen mode={workoutMode} setMode={setWorkoutMode} session={session} plan={data.plan} onChange={updateSession} onChangeType={(type) => updateSession(makeSession(data.plan, data.intake, data.history, selectedDate, type))} onFinish={finishSession} onEditSession={() => setRoutineOpen(true)} onOpenProgram={() => { setProfileInitialSection("program"); setProfileOpen(true); }} onBackHome={() => setActiveTab("home")} />;
+    if (profileOpen) return <ProfileScreen intake={data.intake} plan={data.plan} session={session} locations={data.locations} onSaveLocation={saveLocation} onParseLocation={parseLocation} revisions={data.revisions} configured={configured} initialSection={profileInitialSection} onGenerate={generateProposal} onApplyRevision={applyRevision} onEditIntake={() => setEditingIntake(true)} onBack={() => { setProfileOpen(false); setProfileInitialSection(null); }} />;
+    if (activeTab === "home") return <HomeScreen selectedDate={selectedDate} setSelectedDate={setSelectedDate} session={session} todaySession={todaySession} history={data.history} drafts={data.drafts} todayDate={todayDate} plan={data.plan} onStartWorkout={startWorkout} onOpenRoutine={() => { setSelectedDate(todayDate); if (todaySession?.exercises.length) setRoutineOpen(true); else startWorkout(); }} />;
+    if (activeTab === "workout") return <WorkoutScreen mode={workoutMode} setMode={setWorkoutMode} session={session} plan={data.plan} locations={data.locations} onPrepareSession={prepareSession} onManageLocations={() => { setProfileInitialSection("gym"); setProfileOpen(true); }} onChange={updateSession} onFinish={finishSession} onEditSession={() => setRoutineOpen(true)} onOpenProgram={() => { setProfileInitialSection("program"); setProfileOpen(true); }} onBackHome={() => setActiveTab("home")} />;
     if (activeTab === "meal") return <MealScreen />;
     return <RecoveryScreen />;
   };
@@ -125,18 +155,18 @@ export default function App() {
             </header>}
             <div ref={contentRef} className={sessionActive ? "app-content session-content" : "app-content"}>{renderScreen()}</div>
             <BottomNav active={activeTab} onChange={(tab) => { setProfileOpen(false); if (tab === "workout") setSelectedDate(localDateKey()); setActiveTab(tab); }} hidden={profileOpen || sessionActive} />
-            {routineOpen && session && <Modal title="오늘 운동 수정" onClose={() => setRoutineOpen(false)}>
+            {routineOpen && session?.exercises.length > 0 && <Modal title="오늘 운동 수정" onClose={() => setRoutineOpen(false)}>
               <p className="sheet-description">오늘 운동에만 적용됩니다. 종목을 직접 바꿀 수 있습니다.</p>
               <div className="routine-edit-list">
                 {session.exercises.map((exercise, index) => <div key={`${exercise.id}-${index}`}>
                   <span>{index + 1}</span>
-                  <select aria-label={`${index + 1}번 운동 교체`} value={exercise.id} onChange={(event) => updateSession(replaceExercise(session, index, event.target.value))}>
-                    {EXERCISES.filter((option) => (option.equipment === "맨몸" || data.intake.equipment.includes(option.equipment)) && (option.id === exercise.id || !session.exercises.some((item) => item.id === option.id))).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                  <select aria-label={`${index + 1}번 운동 교체`} disabled={Boolean(exercise.completedSets?.length)} value={exercise.id} onChange={(event) => updateSession(replaceExercise(session, index, event.target.value))}>
+                    {availableForSession.filter((option) => option.id === exercise.id || !session.exercises.some((item) => item.id === option.id)).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                   </select>
-                  <button aria-label={`${exercise.name} 제외`} onClick={() => updateSession({ ...session, exercises: session.exercises.filter((_, at) => at !== index) })}>×</button>
+                  <button aria-label={`${exercise.name} 제외`} disabled={Boolean(exercise.completedSets?.length)} onClick={() => updateSession({ ...session, exercises: session.exercises.filter((_, at) => at !== index) })}>×</button>
                 </div>)}
               </div>
-              <div className="add-exercise-row"><select aria-label="추가할 운동" value={newExerciseId} onChange={(event) => setNewExerciseId(event.target.value)}><option value="">운동 선택</option>{EXERCISES.filter((option) => (option.equipment === "맨몸" || data.intake.equipment.includes(option.equipment)) && !session.exercises.some((item) => item.id === option.id)).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select><button className="secondary-button" disabled={!newExerciseId} onClick={() => { const item = EXERCISES.find((option) => option.id === newExerciseId); if (item) updateSession({ ...session, exercises: [...session.exercises, { ...item, completedSets: [] }] }); setNewExerciseId(""); }}>추가</button></div>
+              <div className="add-exercise-row"><select aria-label="추가할 운동" value={newExerciseId} onChange={(event) => setNewExerciseId(event.target.value)}><option value="">운동 선택</option>{availableForSession.filter((option) => !session.exercises.some((item) => item.id === option.id)).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select><button className="secondary-button" disabled={!newExerciseId} onClick={() => { const item = EXERCISES.find((option) => option.id === newExerciseId); if (item) updateSession({ ...session, exercises: [...session.exercises, { ...item, completedSets: [] }] }); setNewExerciseId(""); }}>추가</button></div>
               <button className="primary-button" onClick={() => setRoutineOpen(false)}>오늘 구성 저장</button>
             </Modal>}
           </>
