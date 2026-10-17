@@ -1,10 +1,10 @@
-import { Dumbbell, Home, MoonStar, Utensils } from "lucide-react";
+import { Dumbbell, Footprints, Home, Utensils } from "lucide-react";
 
 const items = [
   { id: "home", label: "홈", icon: Home },
   { id: "workout", label: "운동", icon: Dumbbell },
-  { id: "meal", label: "식사", icon: Utensils },
-  { id: "recovery", label: "회복", icon: MoonStar },
+  { id: "running", label: "러닝", icon: Footprints },
+  { id: "meal", label: "체중·식사", icon: Utensils },
 ];
 
 export default function BottomNav({ active, onChange, hidden = false }) {

@@ -1,4 +1,5 @@
-import { EXERCISES, SPLITS } from "../lib/program";
+import { cycleLabel, EXERCISES, SPLITS } from "../lib/program";
+import TrainingRuleSummary from "./TrainingRuleSummary";
 
 export default function PlanProposal({ proposal, onApply, onCancel, applyingLabel = "이 구성으로 시작" }) {
   const plan = proposal.plan;
@@ -6,13 +7,14 @@ export default function PlanProposal({ proposal, onApply, onCancel, applyingLabe
     <div className="proposal-stack">
       <section className="card proposal-card">
         <span className="eyebrow">PROPOSED PLAN</span>
-        <h2>{SPLITS[plan.split]?.label || "맞춤형"} · {SPLITS[plan.split]?.sessions.length || 4}회 순환</h2>
+        <h2>{cycleLabel(plan)}</h2>
         <p>{plan.goalSummary}</p>
         <div className="proposal-facts">
           <span>{plan.focus}</span>
-          {plan.backVariety && <span>등 운동마다 종목 변경</span>}
+          {plan.backVariety && <span>보조 종목 번갈아 추천</span>}
         </div>
         <p className="proposal-rationale">{plan.rationale}</p>
+        {plan.trainingRules && <TrainingRuleSummary rules={plan.trainingRules} plan={plan} />}
       </section>
       {proposal.alternatives?.length > 0 && <section className="card proposal-card"><span className="eyebrow">ALTERNATIVES</span><h2>다른 선택지</h2><div className="alternative-list">{proposal.alternatives.filter((item) => item.split !== plan.split).map((item) => <div key={item.split}><strong>{SPLITS[item.split]?.label}</strong><p>{item.reason}</p></div>)}</div></section>}
       {proposal.exerciseIds?.length > 0 && (

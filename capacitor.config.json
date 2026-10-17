@@ -1,0 +1,10 @@
+{
+  "appId": "com.healthlog.app",
+  "appName": "HealthLog",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

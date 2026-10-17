@@ -1,6 +1,15 @@
 node_modules/
 dist/
+.idea/
+.gradle/
+android/.gradle/
+android/local.properties
+android/**/build/
 .vite/
+verification/
+*.keystore
+*.jks
+/healthapp.zip
 *.local
 *.log
 .env

@@ -1,6 +1,16 @@
+import { useEffect } from "react";
 import { X } from "lucide-react";
 
 export default function Modal({ title, children, onClose, className = "" }) {
+  useEffect(() => {
+    const closeFromBackButton = (event) => {
+      event.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener("healthlog:back", closeFromBackButton);
+    return () => window.removeEventListener("healthlog:back", closeFromBackButton);
+  }, [onClose]);
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
